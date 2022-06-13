@@ -1,0 +1,97 @@
+from simple_salesforce import Salesforce
+import datetime
+import csv
+import time
+from pprint import pprint
+from deepdiff import DeepDiff
+# connect to salesforce
+sf=Salesforce(username='api@goterrafirma.com',password='7Di7XO6ZiWrF',security_token='Vv6qnnMJbY9tbAoeqzXRMs4qt')
+
+def get_search_date():
+    today = datetime.date.today()
+    search_date = today -datetime.timedelta(days=30)
+    date = str(search_date) + "T00:00:00.000Z"
+    return date
+date = get_search_date()    
+data = {'Project Number':'','Status':'','Install Start Date':'','Customer Name':'','Market Segment':'','PM Name':''}
+data_list = []
+old_data = {}
+
+query = "SELECT i360__Project_Number__c,supportworks__Install_Date__c,i360__Customer_Name__c,i360__Market_Segment__c,LastModifiedById,i360__Status__c FROM i360__Project__c WHERE supportworks__Install_Date__c >= "+date+" AND i360__Status__c != 'Completed' ORDER BY supportworks__Install_Date__c ASC"
+fetch_results = sf.query_all(query)
+
+def get_new_data(fetch_results):    
+    for key, value in fetch_results.items():        
+        if key == 'records':
+            for record in value:           
+                
+                # modifiedBy_id = record['LastModifiedById']
+                # project_number = record['i360__Project_Number__c']
+                # install_start_date = record['supportworks__Install_Date__c']
+                # customer_name = record['i360__Customer_Name__c']
+                # market_segment = record['i360__Market_Segment__c']
+                # status = record['i360__Status__c']
+                
+                query2 = "SELECT Name FROM i360__Staff__c WHERE i360__User__c = '"+record['LastModifiedById']+"'"
+                try:
+                    fetch_results = sf.query_all(query2)
+                    data['Project Number'].append(record['i360__Project_Number__c'])
+                    data['Status'].append(record['i360__Status__c'])
+                    data['Install Start Date'].append(record['supportworks__Install_Date__c'])
+                    data['Customer Name'].append(record['i360__Customer_Name__c'])
+                    data['Market Segment'].append(record['i360__Market_Segment__c'])
+                  
+                
+                    for key, value in fetch_results.items():
+                        if key == 'records':
+                            for record in value:
+                                data['PM Name'].append(record['Name'])
+                                data_list.append(data)
+                
+                            
+                        # print(project_number,install_start_date,customer_name,market_segment,pm_name,status)         #for logging
+                        # data.append([project_number,status,install_start_date,customer_name,market_segment,pm_name])
+                except:
+                    print("Error: ")
+
+def save_new_data(data):
+    with open('project_data.csv', 'w') as csvfile:
+        writer = csv.DictWriter(csvfile,fieldnames = ['Project Number','Status','Install Start Date','Customer Name','Market Segment','PM Name'])
+        writer.writerow(data)
+
+def read_old_data():   
+    old_data = []
+    with open ('project_data.csv', 'r') as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            old_data.append(row)
+    return old_data
+        
+def search_data(old_data,new_data):
+    changed_data = DeepDiff(old_data,new_data,ignore_order=True,group_by='Project Number',verbose_level=2)
+    # new,changed,removed = changed_data[''] 
+    
+    pprint(changed_data)     #for logging
+    return changed_data
+            
+def save_changed_data(changed_data):
+    with open('changed_project_data.csv', 'a') as csvfile:
+        writer = csv.DictWriter(csvfile,fieldnames = ['Project Number','Status','Install Start Date','Customer Name','Market Segment','PM Name'])
+        writer.writerows(changed_data)          
+
+
+get_new_data(fetch_results)
+# search_data(read_old_data(),data)
+# save_changed_data(search_data(read_old_data(),data))
+print(data_list)
+save_new_data(data)
+
+
+    #search for project number
+    #if project number not in old data, add to new data
+    #if project number in old data, check install start date
+    #if install start date is different, add to new data
+    #if install start date is the same, check status
+    #if status is different, add to new data
+    #if status is the same, do nothing
+
